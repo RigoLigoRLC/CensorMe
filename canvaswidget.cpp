@@ -15,9 +15,6 @@ CanvasWidget::CanvasWidget(QWidget *parent)
     m_mouseActionType = None;
     m_previewShowMaskOnly = true;
     m_censorType = CensorType::CT_Pixelize;
-
-    m_copyPainter.setRenderHint(QPainter::Antialiasing, false);
-    m_copyPainter.setRenderHint(QPainter::SmoothPixmapTransform, false);
 }
 
 void CanvasWidget::setChunkSize(int chunkSize)
@@ -27,18 +24,36 @@ void CanvasWidget::setChunkSize(int chunkSize)
     recomputeCensoredImage();
 }
 
+void CanvasWidget::setBrushSize(int diameterPx)
+{
+    m_brushSize = diameterPx;
+
+    if (m_drawCensorPainter.isActive()) {
+        QPen pen = m_drawCensorPainter.pen();
+        pen.setWidth(diameterPx);
+        m_drawCensorPainter.setPen(pen);
+    }
+}
+
+void CanvasWidget::setPreviewMode(int mode)
+{
+    m_previewMode = (PreviewMode)mode;
+    update();
+}
+
 void CanvasWidget::switchImage(QImage baseImage, QImage maskImage, CensorType type)
 {
     m_baseImage = baseImage;
     m_censorType = type;
     if (m_maskImage.isNull()) {
-        m_maskImage = QImage(baseImage.size(), QImage::Format_Alpha8);
-        m_maskImage.fill(Qt::black);
+        m_maskImage = QImage(baseImage.size(), QImage::Format_ARGB32_Premultiplied);
+        m_maskImage.fill(Qt::transparent);
     } else {
         m_maskImage = maskImage;
     }
     this->setFixedSize(baseImage.size());
-    m_censoredImage = QImage(baseImage.size(), QImage::Format_ARGB32);
+    m_censoredImage = QImage(baseImage.size(), QImage::Format_ARGB32_Premultiplied);
+    m_previewFramebuffer = QImage(baseImage.size(), QImage::Format_ARGB32_Premultiplied);
 
     recomputeCensoredImage();
 }
@@ -49,7 +64,8 @@ bool CanvasWidget::eventFilter(QObject *obj, QEvent *event)
     switch (event->type()) {
     case QEvent::Resize: {
         auto e = (QResizeEvent*)event;
-        redetermineWidgetSize((m_parentSize = e->size()));
+        // Scroll area size != viewport size. Shrink by 1 pixel on all sides to work around it
+        redetermineWidgetSize((m_parentSize = e->size().shrunkBy(QMargins(1, 1, 1, 1))));
         break;
     }
     default:
@@ -65,7 +81,29 @@ void CanvasWidget::paintEvent(QPaintEvent *pe)
     }
 
     QPainter p(this);
-    p.drawImage(rect(), m_censoredImage.isNull() ? m_baseImage : m_censoredImage);
+//    p.drawImage(rect(), m_censoredImage.isNull() ? m_baseImage : m_censoredImage);
+    p.drawImage(rect(), m_maskImage);
+    switch (m_previewMode) {
+
+    case PM_Original:
+        p.drawImage(rect(), m_baseImage);
+        break;
+    case PM_FullyCensored:
+        p.drawImage(rect(), m_censoredImage);
+        break;
+    default:
+    case PM_MaskOnly:
+        p.drawImage(rect(), m_maskImage);
+        break;
+    case PM_MaskOnImage:
+        p.drawImage(rect(), m_baseImage);
+        p.drawImage(rect(), m_maskImage);
+        break;
+    case PM_FinalPreview: {
+        p.drawImage(rect(), m_previewFramebuffer);
+        break;
+    }
+    }
 
     // Below are inverted overlays
     p.setCompositionMode(QPainter::RasterOp_SourceXorDestination);
@@ -75,6 +113,7 @@ void CanvasWidget::paintEvent(QPaintEvent *pe)
 
     // Brush
     int brushRadius = std::round(((double)width() / m_baseImage.width()) * m_brushSize);
+    brushRadius /= p.device()->devicePixelRatioF(); // FUCK APPLE RETINA DISPLAY
     p.drawEllipse(m_mouseHoverPos, brushRadius, brushRadius);
     p.end();
 }
@@ -95,15 +134,22 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent *e)
 void CanvasWidget::mousePressEvent(QMouseEvent *e)
 {
     if (e->buttons() == Qt::LeftButton) {
-        if (e->modifiers() & Qt::CTRL) {
-            m_mouseActionType = EraseCensor;
-        } else {
-            m_mouseActionType = DrawCensor;
-        }
         // Prepare draw censor painter here
         m_drawCensorPainter.begin(&m_maskImage);
-        auto pen = m_drawCensorPainter.pen(); pen.setWidth(m_brushSize);
+        m_previewFramebuffer.fill(Qt::transparent);
+        m_mixPainter.begin(&m_previewFramebuffer);
+        QPen pen = m_drawCensorPainter.pen();
+        pen.setColor(Qt::white);
+        pen.setWidth(m_brushSize);
+        pen.setCapStyle(Qt::RoundCap);
         m_drawCensorPainter.setPen(pen);
+        if (e->modifiers() & Qt::CTRL) {
+            m_mouseActionType = EraseCensor;
+            m_drawCensorPainter.setCompositionMode(QPainter::CompositionMode_Clear);
+        } else {
+            m_mouseActionType = DrawCensor;
+            m_drawCensorPainter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        }
     } else if (e->buttons() == Qt::RightButton) {
         m_mouseActionType = DragCanvas;
     }
@@ -121,6 +167,7 @@ void CanvasWidget::mouseReleaseEvent(QMouseEvent *e)
             m_mouseActionType = None;
             m_mouseLastHoverPos = {-1, -1};
             m_drawCensorPainter.end();
+            m_mixPainter.end();
         }
         break;
     case DragCanvas:
@@ -154,17 +201,19 @@ void CanvasWidget::processMouseDrag()
 
     case None:
         break;
-    case DrawCensor:{
+    case DrawCensor:
+    case EraseCensor: {
         QPoint mappedBegin, mappedEnd;
         double ratio = (double)m_maskImage.width() / width();
         mappedBegin = m_mouseLastHoverPos * ratio;
         mappedEnd = m_mouseHoverPos * ratio;
         m_drawCensorPainter.drawLine(mappedBegin, mappedEnd);
+        mixdownToPreviewFramebuffer();
+
         update();
+        emit censorMaskEdited();
         break;
     }
-    case EraseCensor:
-        break;
     case DragCanvas:
         break;
     }
@@ -197,6 +246,11 @@ void CanvasWidget::recomputeCensoredImage()
     case CT_White:
         break;
     }
+
+
+    m_mixPainter.begin(&m_previewFramebuffer);
+    mixdownToPreviewFramebuffer();
+    m_mixPainter.end();
 }
 
 void CanvasWidget::censorMethodPixelize()
@@ -259,6 +313,8 @@ void CanvasWidget::censorMethodPixelize()
     }
 
     m_copyPainter.begin(&m_censoredImage);
+    m_copyPainter.setRenderHint(QPainter::Antialiasing, false);
+    m_copyPainter.setRenderHint(QPainter::SmoothPixmapTransform, false);
     m_copyPainter.drawImage(QRect(QPoint{0, 0},
                                   QPoint{imgSmall.width() * chunkSize,
                                          imgSmall.height() * chunkSize}
@@ -273,6 +329,16 @@ void CanvasWidget::censorMethodPixelize()
 
     redetermineWidgetSize(m_parentSize);
     update();
+}
+
+void CanvasWidget::mixdownToPreviewFramebuffer()
+{
+    m_previewFramebuffer.fill(Qt::transparent);
+    m_mixPainter.drawImage(m_previewFramebuffer.rect(), m_maskImage);
+    m_mixPainter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    m_mixPainter.drawImage(m_previewFramebuffer.rect(), m_censoredImage);
+    m_mixPainter.setCompositionMode(QPainter::CompositionMode_DestinationOver);
+    m_mixPainter.drawImage(m_previewFramebuffer.rect(), m_baseImage);
 }
 
 

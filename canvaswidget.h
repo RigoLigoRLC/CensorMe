@@ -17,6 +17,8 @@ public:
     void setChunkSize(int chunkSize);
     void setBrushSize(int diameterPx);
 
+    void setPreviewMode(int mode);
+
     void switchImage(QImage baseImage, QImage maskImage, CensorType type);
     QPixmap getCurrentMaskImage();
 
@@ -38,6 +40,8 @@ private:
     void recomputeCensoredImage();
     void censorMethodPixelize();
 
+    void mixdownToPreviewFramebuffer();
+
 private:
     QSize m_parentSize;
 
@@ -45,7 +49,8 @@ private:
     QImage m_baseImage;
     QImage m_maskImage;
     QImage m_censoredImage;
-    QPainter m_copyPainter, m_drawCensorPainter;
+    QImage m_previewFramebuffer;
+    QPainter m_copyPainter, m_drawCensorPainter, m_mixPainter;
     double m_censorComputationTime;
 
     QPoint m_mouseHoverPos, m_mouseLastHoverPos;
@@ -57,6 +62,7 @@ private:
         EraseCensor,
         DragCanvas,
     } m_mouseActionType;
+    PreviewMode m_previewMode;
 
     CensorType m_censorType;
     int m_chunkSize; // for pixelize
@@ -64,6 +70,7 @@ private:
     bool m_previewShowFullCensored;
 
 signals:
+    void censorMaskEdited();
 };
 
 #endif // CANVASWIDGET_H

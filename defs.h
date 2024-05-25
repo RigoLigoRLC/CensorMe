@@ -7,4 +7,12 @@ enum CensorType {
     CT_White
 };
 
+enum PreviewMode {
+    PM_Original,
+    PM_FullyCensored,
+    PM_MaskOnly,
+    PM_MaskOnImage,
+    PM_FinalPreview,
+};
+
 #endif // DEFS_H
