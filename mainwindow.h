@@ -20,7 +20,9 @@ public:
 private slots:
     void on_actOpenOneImg_triggered();
 
-    void on_sliderChunkSize_actionTriggered(int action);
+    void on_sliderChunkSize_sliderMoved(int action);
+
+    void on_sliderBrushSize_sliderMoved(int position);
 
 private:
     Ui::MainWindow *ui;

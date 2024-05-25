@@ -39,9 +39,15 @@ void MainWindow::on_actOpenOneImg_triggered()
 }
 
 
-void MainWindow::on_sliderChunkSize_actionTriggered(int action)
+void MainWindow::on_sliderChunkSize_sliderMoved(int position)
 {
-    ui->widCanvas->setChunkSize(ui->sliderChunkSize->value());
-    ui->lblChunkSize->setText(QString("%1px").arg(ui->sliderChunkSize->value()));
+    ui->widCanvas->setChunkSize(position);
+    ui->lblChunkSize->setText(QString("%1px").arg(position));
+}
+
+
+void MainWindow::on_sliderBrushSize_sliderMoved(int position)
+{
+    ui->widCanvas->setBrushSize(position);
 }
 
