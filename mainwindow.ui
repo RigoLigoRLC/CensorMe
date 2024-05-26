@@ -36,7 +36,7 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>379</width>
+             <width>376</width>
              <height>489</height>
             </rect>
            </property>
@@ -342,6 +342,37 @@
          </size>
         </property>
        </spacer>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnRestore">
+        <property name="text">
+         <string>RESTORE</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnSave">
+        <property name="text">
+         <string>SAVE (Ctrl+S)</string>
+        </property>
+        <property name="shortcut">
+         <string>Ctrl+S</string>
+        </property>
+        <property name="default">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="chkAutoSave">
+        <property name="text">
+         <string>Auto Save on
+Switching Image</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
       </item>
      </layout>
     </item>

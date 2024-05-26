@@ -15,4 +15,6 @@ enum PreviewMode {
     PM_FinalPreview,
 };
 
+constexpr const char* CensorMeDataDir = "CensorMeData";
+
 #endif // DEFS_H

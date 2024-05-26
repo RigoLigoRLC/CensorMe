@@ -12,7 +12,7 @@ public:
     explicit CanvasWidget(QWidget *parent = nullptr);
 
     void setCensorType(CensorType type);
-    CensorType getCensorType();
+    CensorType getCensorType() { return m_censorType; }
 
     void setChunkSize(int chunkSize);
     void setBrushSize(int diameterPx);
@@ -20,7 +20,9 @@ public:
     void setPreviewMode(int mode);
 
     void switchImage(QImage baseImage, QImage maskImage, CensorType type);
-    QPixmap getCurrentMaskImage();
+
+    QImage getFinalImage() { return m_previewFramebuffer; }
+    QImage getMaskImage() { return m_maskImage; }
 
 protected:
     virtual bool eventFilter(QObject *obj, QEvent *event) override;

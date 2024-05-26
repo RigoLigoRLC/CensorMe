@@ -45,7 +45,7 @@ void CanvasWidget::switchImage(QImage baseImage, QImage maskImage, CensorType ty
 {
     m_baseImage = baseImage;
     m_censorType = type;
-    if (m_maskImage.isNull()) {
+    if (maskImage.isNull()) {
         m_maskImage = QImage(baseImage.size(), QImage::Format_ARGB32_Premultiplied);
         m_maskImage.fill(Qt::transparent);
     } else {
