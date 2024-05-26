@@ -36,8 +36,8 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>376</width>
-             <height>489</height>
+             <width>428</width>
+             <height>523</height>
             </rect>
            </property>
            <layout class="QHBoxLayout" name="horizontalLayout_2">
@@ -80,7 +80,10 @@
              <bool>false</bool>
             </property>
             <property name="text">
-             <string>File List</string>
+             <string>File List (F)</string>
+            </property>
+            <property name="shortcut">
+             <string>F</string>
             </property>
             <property name="checkable">
              <bool>true</bool>
@@ -118,8 +121,17 @@
               <verstretch>0</verstretch>
              </sizepolicy>
             </property>
+            <property name="maximumSize">
+             <size>
+              <width>30</width>
+              <height>16777215</height>
+             </size>
+            </property>
             <property name="text">
              <string>&lt;</string>
+            </property>
+            <property name="shortcut">
+             <string>PgUp</string>
             </property>
            </widget>
           </item>
@@ -147,8 +159,17 @@
               <verstretch>0</verstretch>
              </sizepolicy>
             </property>
+            <property name="maximumSize">
+             <size>
+              <width>30</width>
+              <height>16777215</height>
+             </size>
+            </property>
             <property name="text">
              <string>&gt;</string>
+            </property>
+            <property name="shortcut">
+             <string>PgDown</string>
             </property>
            </widget>
           </item>
@@ -345,6 +366,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="btnRestore">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
         <property name="text">
          <string>RESTORE</string>
         </property>
@@ -352,6 +376,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="btnSave">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
         <property name="text">
          <string>SAVE (Ctrl+S)</string>
         </property>
@@ -384,17 +411,26 @@ Switching Image</string>
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>24</height>
+     <height>17</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
     <property name="title">
-     <string>File</string>
+     <string>Open</string>
     </property>
-    <addaction name="actOpenOneImg"/>
     <addaction name="actOpenFolder"/>
+    <addaction name="actOpenOneImg"/>
+   </widget>
+   <widget class="QMenu" name="menuExport">
+    <property name="title">
+     <string>Export</string>
+    </property>
+    <addaction name="separator"/>
+    <addaction name="actExportToOutput"/>
+    <addaction name="actExportSelectDest"/>
    </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuExport"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actOpenOneImg">
@@ -405,6 +441,25 @@ Switching Image</string>
   <action name="actOpenFolder">
    <property name="text">
     <string>Open Folder</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+O</string>
+   </property>
+  </action>
+  <action name="actExportToOutput">
+   <property name="text">
+    <string>Export to &quot;output/&quot;</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+E</string>
+   </property>
+  </action>
+  <action name="actExportSelectDest">
+   <property name="text">
+    <string>Select export location...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+E</string>
    </property>
   </action>
  </widget>

@@ -7,6 +7,7 @@
 #include <QMessageBox>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProgressDialog>
 #include <QDebug>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -41,6 +42,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->lstFileList->setModel(&m_fsModel);
     ui->lstFileList->setSelectionMode(QListView::SingleSelection);
     ui->lstFileList->setSelectionBehavior(QListView::SelectRows);
+    connect(ui->lstFileList->selectionModel(), &QItemSelectionModel::currentChanged, this, &MainWindow::currentSelectedFileChanged);
 
     setOperatingInFolderMode(false);
 
@@ -63,7 +65,42 @@ void MainWindow::previewModeButtonGroupIdClicked(int id)
 
 void MainWindow::currentSelectedFileChanged(const QModelIndex &current, const QModelIndex &previous)
 {
+    if (previous.isValid()) {
+        if (!ensureSaved()) {
+            disconnect(ui->lstFileList->selectionModel(), &QItemSelectionModel::currentChanged, this, &MainWindow::currentSelectedFileChanged);
+            ui->lstFileList->setCurrentIndex(previous);
+            connect(ui->lstFileList->selectionModel(), &QItemSelectionModel::currentChanged, this, &MainWindow::currentSelectedFileChanged);
+            m_folderModeFileNameNoDir = "";
+            return;
+        }
+    }
 
+    QString file = m_dirModeDirAbsPath + QDir::separator() + m_fsModel.data(current).toString();
+    qApp->setOverrideCursor(Qt::BusyCursor);
+    QImage img(file);
+    if (img.isNull()) {
+        qApp->restoreOverrideCursor();
+        QMessageBox::critical(this, tr("Failed to load image"), tr("Probably is not supported format"));
+        ui->widCanvas->switchImage(QImage(), QImage(), {});
+        m_folderModeFileNameNoDir = "";
+        return;
+    }
+
+    QImage mask;
+    MetaConfig meta;
+    if (takeMaskAndMetadataForImage(file, mask, meta)) {
+        ui->sliderChunkSize->setSliderPosition(meta.chunkSize);
+    } else {
+        meta.method = CensorType::CT_Pixelize;
+        meta.chunkSize = ui->sliderChunkSize->value();
+    }
+
+    m_censorMaskEdited = false;
+    m_folderModeFileNameNoDir = m_fsModel.data(current).toString();
+    m_dirModeCurrentFileIndex = current.row();
+    ui->widCanvas->switchImage(img, mask, meta);
+    ui->lblImgCounter->setText(tr("%1/%2").arg(current.row() + 1).arg(m_dirModeFileCount));
+    qApp->restoreOverrideCursor();
 }
 
 void MainWindow::on_actOpenOneImg_triggered()
@@ -97,9 +134,10 @@ void MainWindow::on_actOpenOneImg_triggered()
         on_sliderChunkSize_sliderMoved(meta.chunkSize); // FIXME: WHYYYYYYYY???
     } else {
         meta.method = CensorType::CT_Pixelize;
+        meta.chunkSize = ui->sliderChunkSize->value();
     }
 
-    ui->widCanvas->switchImage(img, mask, meta.method);
+    ui->widCanvas->switchImage(img, mask, meta);
 }
 
 
@@ -140,8 +178,9 @@ void MainWindow::on_actOpenFolder_triggered()
 
     // Wait until loads
     QEventLoop el;
-    connect(&m_fsModel, &QFileSystemModel::directoryLoaded, [&](QString dir){ el.quit(); });
+    auto connection = connect(&m_fsModel, &QFileSystemModel::directoryLoaded, [&](QString dir){ el.quit(); });
     el.exec();
+    disconnect(connection);
 
     auto count = m_fsModel.rowCount(rootIdx);
     if (count == 0) {
@@ -149,6 +188,7 @@ void MainWindow::on_actOpenFolder_triggered()
         setOperatingInFolderMode(false);
         return;
     }
+    m_dirModeFileCount = count;
 
     m_fsModel.sort(0);
     auto firstFile = m_fsModel.index(0, 0, rootIdx);
@@ -167,7 +207,7 @@ void MainWindow::setOperatingInFolderMode(bool isInFolderMode)
 {
     m_isNowOperatingInFolderMode = isInFolderMode;
     ui->lstFileList->setEnabled(isInFolderMode);
-    ui->lstFileList->setVisible(isInFolderMode ? ui->btnToggleFileList->isChecked() : false);
+    ui->lstFileList->setVisible(isInFolderMode);
     ui->btnToggleFileList->setEnabled(isInFolderMode);
     ui->btnNextImg->setEnabled(isInFolderMode);
     ui->btnPrevImg->setEnabled(isInFolderMode);
@@ -201,13 +241,30 @@ bool MainWindow::takeMaskAndMetadataForImage(QString absPath, QImage &maskOut, M
 
 void MainWindow::reloadMaskAndMetadataForImage()
 {
+    QString file;
+    if (!m_isNowOperatingInFolderMode) {
+        file = m_fileModeFileAbsPath;
+    } else {
+        file = m_dirModeDirAbsPath + QDir::separator() + m_folderModeFileNameNoDir;
+    }
 
+    QImage mask;
+    MetaConfig meta;
+    if (takeMaskAndMetadataForImage(file, mask, meta)) {
+        ui->sliderChunkSize->setSliderPosition(meta.chunkSize);
+        on_sliderChunkSize_sliderMoved(meta.chunkSize); // FIXME: WHYYYYYYYY???
+    } else {
+        meta.method = CensorType::CT_Pixelize;
+        meta.chunkSize = 15;
+    }
+
+    ui->widCanvas->restoreChanges(mask, meta);
 }
 
 bool MainWindow::isAnyImageOpened()
 {
     if ((m_isNowOperatingInFolderMode && m_dirModeDirAbsPath.isNull()) ||
-        (!m_isNowOperatingInFolderMode) && m_fileModeFileAbsPath.isNull()) {
+        ((!m_isNowOperatingInFolderMode) && m_fileModeFileAbsPath.isNull())) {
         return false;
     }
     return true;
@@ -215,7 +272,7 @@ bool MainWindow::isAnyImageOpened()
 
 bool MainWindow::ensureSaved()
 {
-    if (!isAnyImageOpened()) {
+    if (!isAnyImageOpened() || !m_censorMaskEdited) {
         return true;
     }
 
@@ -252,7 +309,7 @@ retrySaveMask:
                                             QDir::separator() +
                                             CensorMeDataDir +
                                             QDir::separator() +
-                                            fi.fileName())) {
+                                            fi.fileName() + ".png")) {
         auto ret = QMessageBox::critical(this,
                                          tr("Cannot save mask image"),
                                          tr("Please check permission, disk space or other things that may cause this problem!"),
@@ -305,7 +362,163 @@ retrySaveMeta:
 
 bool MainWindow::saveForFolderModeEditedFile(QString filename)
 {
+    QDir maskDir(m_dirModeDirAbsPath + QDir::separator() + CensorMeDataDir);
 
+    if (!maskDir.exists()) {
+        if (!QDir().mkpath(maskDir.absolutePath())) {
+            QMessageBox::critical(this,
+                                  tr("Cannot create data folder"),
+                                  tr("Please check permission, disk space or other things that may cause this problem!"));
+            return false;
+        }
+    }
+
+
+retrySaveMask:
+    if (!ui->widCanvas->getMaskImage().save(maskDir.absolutePath() + QDir::separator() + filename + ".png")) {
+        auto ret = QMessageBox::critical(this,
+                                         tr("Cannot save mask image"),
+                                         tr("Please check permission, disk space or other things that may cause this problem!"),
+                                         QMessageBox::Abort | QMessageBox::Retry | QMessageBox::Ignore);
+        switch (ret) {
+        default:
+        case QMessageBox::Abort: return false;
+        case QMessageBox::Retry: goto retrySaveMask;
+        case QMessageBox::Ignore: break;
+        }
+    }
+
+    QJsonObject ro;
+    ro["method"] = ui->widCanvas->getCensorType();
+    ro["chunkSize"] = ui->sliderChunkSize->value();
+    QJsonDocument jsd(ro);
+    QString meta = jsd.toJson(QJsonDocument::Compact);
+    bool success = false;
+
+retrySaveMeta:
+    do {
+        QFile f(maskDir.absolutePath() + QDir::separator() + filename + ".json");
+        if (!f.open(QFile::WriteOnly)) break;
+        QTextStream ts(&f);
+        ts << meta;
+        if (ts.status() != QTextStream::Ok) break;
+        f.close();
+        success = true;
+    } while (false);
+    if (!success) {
+        auto ret = QMessageBox::critical(this,
+                                         tr("Cannot save extra info file"),
+                                         tr("Please check permission, disk space or other things that may cause this problem!"),
+                                         QMessageBox::Abort | QMessageBox::Retry | QMessageBox::Ignore);
+        switch (ret) {
+        default:
+        case QMessageBox::Abort: return false;
+        case QMessageBox::Retry: goto retrySaveMeta;
+        case QMessageBox::Ignore: break;
+        }
+    }
+
+    setCensorMaskEdited(false);
+    return true;
+}
+
+void MainWindow::exportTo(QString dir)
+{
+    QDir exportDir(dir);
+
+    if (!exportDir.exists()) {
+        if (!QDir().mkpath(exportDir.absolutePath())) {
+            QMessageBox::critical(this,
+                                  tr("Cannot create data folder"),
+                                  tr("Please check permission, disk space or other things that may cause this problem!"));
+            return;
+        }
+    }
+
+    QMessageBox::StandardButton choice;
+    if (m_isNowOperatingInFolderMode) {
+        QProgressDialog pd(this);
+        pd.setMinimumDuration(0);
+        pd.setMaximum(m_dirModeFileCount);
+        pd.setWindowModality(Qt::WindowModal);
+        pd.show();
+
+        int i = 0;
+        auto rootIndex = ui->lstFileList->rootIndex();
+        forever {
+            auto fileIndex = m_fsModel.index(i, 0, rootIndex);
+            if (!fileIndex.isValid()) break;
+            // Select file
+            ui->lstFileList->setCurrentIndex(fileIndex);
+            // Export
+            exportImageConfirmOverwrite(ui->widCanvas->getFinalImage(),
+                                        dir + QDir::separator() + fileIndex.data().toString(),
+                                        choice);
+            switch (choice) {
+            default:
+            case QMessageBox::Yes:
+            case QMessageBox::No:
+                choice = QMessageBox::NoButton;
+                break;
+            case QMessageBox::YesToAll:
+            case QMessageBox::NoToAll:
+                break;
+            case QMessageBox::Abort:
+                goto abortExport;
+                break;
+            }
+            i++;
+            pd.setValue(i);
+        }
+    abortExport:
+        pd.close();
+    } else {
+        exportImageConfirmOverwrite(ui->widCanvas->getFinalImage(),
+                                    dir + QDir::separator() + QFileInfo(m_fileModeFileAbsPath).fileName(),
+                                    choice);
+    }
+}
+
+void MainWindow::exportImageConfirmOverwrite(QImage image, QString dest, QMessageBox::StandardButton &choice)
+{
+    QMessageBox::StandardButton newChoice = QMessageBox::Yes;
+    if (QFile::exists(dest)) {
+        if (choice == QMessageBox::NoButton) {
+            newChoice = QMessageBox::question(this,
+                                              tr("Confirm overwrite existing file?"),
+                                              tr("Destination file %1 already exists.\n"
+                                                 "Do you wish to overwrite?\n\n"
+                                                 "To stop exporting, click \"Abort\".").arg(dest),
+                                              QMessageBox::Yes | QMessageBox::YesToAll | QMessageBox::No | QMessageBox::NoToAll | QMessageBox::Abort);
+        }
+    }
+
+    bool stillWrite = false;
+    switch (newChoice) {
+    case QMessageBox::Yes:
+    case QMessageBox::YesToAll:
+        stillWrite = true;
+        break;
+    default:
+        break;
+    }
+    choice = newChoice;
+
+    if (stillWrite) {
+retryExport:
+        if (!image.save(dest, nullptr, 30)) {
+            auto ret = QMessageBox::critical(nullptr,
+                                             tr("Cannot save exported file"),
+                                             tr("Please check permission, disk space or other things that may cause this problem!"),
+                                             QMessageBox::Abort | QMessageBox::Retry | QMessageBox::Ignore);
+            switch (ret) {
+            default:
+            case QMessageBox::Abort: choice = QMessageBox::Abort; return;
+            case QMessageBox::Retry: goto retryExport;
+            case QMessageBox::Ignore: break;
+            }
+        }
+    }
 }
 
 
@@ -347,6 +560,46 @@ void MainWindow::on_btnSave_clicked()
 
 void MainWindow::on_btnRestore_clicked()
 {
+    reloadMaskAndMetadataForImage();
+    setCensorMaskEdited(false);
+}
 
+
+void MainWindow::on_actExportToOutput_triggered()
+{
+    if (m_isNowOperatingInFolderMode) {
+        exportTo(m_dirModeDirAbsPath + QDir::separator() + "output");
+    } else {
+        QFileInfo fi(m_fileModeFileAbsPath);
+        exportTo(fi.dir().absolutePath() + QDir::separator() + "output");
+    }
+}
+
+
+void MainWindow::on_actExportSelectDest_triggered()
+{
+    QString baseDir = m_isNowOperatingInFolderMode ? m_dirModeDirAbsPath : QFileInfo(m_fileModeFileAbsPath).dir().absolutePath();
+    auto dir = QFileDialog::getExistingDirectory(this,
+                                                 tr("Select export directory..."),
+                                                 baseDir);
+    if (dir.isNull()) return;
+
+    exportTo(dir);
+}
+
+
+void MainWindow::on_btnPrevImg_clicked()
+{
+    if (m_dirModeCurrentFileIndex == 0) return;
+
+    ui->lstFileList->setCurrentIndex(m_fsModel.index(m_dirModeCurrentFileIndex - 1, 0, ui->lstFileList->rootIndex()));
+}
+
+
+void MainWindow::on_btnNextImg_clicked()
+{
+    if (m_dirModeCurrentFileIndex == m_dirModeFileCount - 1) return;
+
+    ui->lstFileList->setCurrentIndex(m_fsModel.index(m_dirModeCurrentFileIndex + 1, 0, ui->lstFileList->rootIndex()));
 }
 

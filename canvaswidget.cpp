@@ -41,10 +41,11 @@ void CanvasWidget::setPreviewMode(int mode)
     update();
 }
 
-void CanvasWidget::switchImage(QImage baseImage, QImage maskImage, CensorType type)
+void CanvasWidget::switchImage(QImage baseImage, QImage maskImage, MetaConfig meta)
 {
     m_baseImage = baseImage;
-    m_censorType = type;
+    m_censorType = meta.method;
+    m_chunkSize = meta.chunkSize;
     if (maskImage.isNull()) {
         m_maskImage = QImage(baseImage.size(), QImage::Format_ARGB32_Premultiplied);
         m_maskImage.fill(Qt::transparent);
@@ -54,6 +55,20 @@ void CanvasWidget::switchImage(QImage baseImage, QImage maskImage, CensorType ty
     this->setFixedSize(baseImage.size());
     m_censoredImage = QImage(baseImage.size(), QImage::Format_ARGB32_Premultiplied);
     m_previewFramebuffer = QImage(baseImage.size(), QImage::Format_ARGB32_Premultiplied);
+
+    recomputeCensoredImage();
+}
+
+void CanvasWidget::restoreChanges(QImage maskImage, MetaConfig meta)
+{
+    if (maskImage.isNull()) {
+        m_maskImage = QImage(m_baseImage.size(), QImage::Format_ARGB32_Premultiplied);
+        m_maskImage.fill(Qt::transparent);
+    } else {
+        m_maskImage = maskImage;
+    }
+    m_chunkSize = meta.chunkSize;
+    m_censorType = meta.method;
 
     recomputeCensoredImage();
 }
@@ -113,7 +128,7 @@ void CanvasWidget::paintEvent(QPaintEvent *pe)
 
     // Brush
     int brushRadius = std::round(((double)width() / m_baseImage.width()) * m_brushSize);
-    brushRadius /= p.device()->devicePixelRatioF(); // FUCK APPLE RETINA DISPLAY
+    brushRadius /= 2;
     p.drawEllipse(m_mouseHoverPos, brushRadius, brushRadius);
     p.end();
 }

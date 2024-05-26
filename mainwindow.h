@@ -5,6 +5,7 @@
 #include <QMainWindow>
 #include <QButtonGroup>
 #include <QFileSystemModel>
+#include <QMessageBox>
 #include <QLabel>
 
 QT_BEGIN_NAMESPACE
@@ -44,6 +45,14 @@ private slots:
 
     void on_btnRestore_clicked();
 
+    void on_actExportToOutput_triggered();
+
+    void on_actExportSelectDest_triggered();
+
+    void on_btnPrevImg_clicked();
+
+    void on_btnNextImg_clicked();
+
 private:
     void switchToImage(QString absPath);
     void setCensorMaskEdited(bool);
@@ -54,6 +63,8 @@ private:
     bool ensureSaved();
     bool saveForFileModeEditedFile();
     bool saveForFolderModeEditedFile(QString filenameNoDir);
+    void exportTo(QString dir);
+    void exportImageConfirmOverwrite(QImage image, QString dest, QMessageBox::StandardButton &choice);
 
 private:
     Ui::MainWindow *ui;
@@ -67,6 +78,8 @@ private:
 
     QFileSystemModel m_fsModel;
     QButtonGroup m_previewModeGroup;
+    int m_dirModeFileCount;
+    int m_dirModeCurrentFileIndex;
     bool m_isNowOperatingInFolderMode;
     bool m_censorMaskEdited;
     bool m_autoSaveOnSwitching;

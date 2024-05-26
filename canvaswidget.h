@@ -2,6 +2,7 @@
 #define CANVASWIDGET_H
 
 #include "defs.h"
+#include "mainwindow.h"
 #include <QWidget>
 #include <QPainter>
 
@@ -19,7 +20,8 @@ public:
 
     void setPreviewMode(int mode);
 
-    void switchImage(QImage baseImage, QImage maskImage, CensorType type);
+    void switchImage(QImage baseImage, QImage maskImage, MetaConfig meta);
+    void restoreChanges(QImage maskImage, MetaConfig meta);
 
     QImage getFinalImage() { return m_previewFramebuffer; }
     QImage getMaskImage() { return m_maskImage; }
